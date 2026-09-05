@@ -162,6 +162,11 @@ function MainSanctuary() {
         <AuthScreen
           initialIsSignUp={authIsSignUp}
           onBackToHome={() => setCurrentScreen('home')}
+          onSuccess={() => {
+            const target = pendingTargetScreen || 'chat';
+            setCurrentScreen(target);
+            setPendingTargetScreen(null);
+          }}
         />
       </div>
     );

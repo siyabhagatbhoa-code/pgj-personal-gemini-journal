@@ -5,9 +5,10 @@ import { GeminiLogo } from './GeminiLogo';
 interface AuthScreenProps {
   initialIsSignUp?: boolean;
   onBackToHome?: () => void;
+  onSuccess?: () => void;
 }
 
-export const AuthScreen: React.FC<AuthScreenProps> = ({ initialIsSignUp = false, onBackToHome }) => {
+export const AuthScreen: React.FC<AuthScreenProps> = ({ initialIsSignUp = false, onBackToHome, onSuccess }) => {
   const { signInWithGoogle, signInAsGuest, signInWithEmail, signUpWithEmail } = useAuth();
 
   const [isSignUp, setIsSignUp] = useState(initialIsSignUp);
@@ -66,6 +67,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ initialIsSignUp = false,
       setLoading(true);
       try {
         await signUpWithEmail(trimmedEmail, password, fullName.trim());
+        onSuccess?.();
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : 'Failed to create account.';
         if (msg.includes('email-already-in-use')) {
@@ -89,6 +91,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ initialIsSignUp = false,
       setLoading(true);
       try {
         await signInWithEmail(trimmedEmail, password);
+        onSuccess?.();
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : 'Invalid credentials. Please try again.';
         if (msg.includes('user-not-found') || msg.includes('wrong-password') || msg.includes('invalid-credential')) {
@@ -109,6 +112,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ initialIsSignUp = false,
     setLoading(true);
     try {
       await signInWithGoogle();
+      onSuccess?.();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes('origin_mismatch') || msg.includes('400') || msg.includes('unauthorized-domain')) {
@@ -132,6 +136,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ initialIsSignUp = false,
     setLoading(true);
     try {
       await signInAsGuest();
+      onSuccess?.();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Guest access failed.';
       setError(msg.replace('Firebase: ', ''));
