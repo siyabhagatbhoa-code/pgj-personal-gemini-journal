@@ -207,21 +207,59 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signInAsGuest = async () => {
     localStorage.removeItem('pgj_local_auth');
+    
+    // 1. Primary: Try Firebase Anonymous Auth
     try {
       const res = await signInAnonymously(auth);
-      if (res.user) {
+      if (res?.user) {
         await fetchOrCreateProfile(res.user, 'Guest Sanctuary Writer');
+        return;
       }
     } catch (err) {
-      console.warn('Anonymous auth fallback:', err);
-      // Fallback guest user if anonymous auth is not enabled in Firebase
-      const demoEmail = `guest_${Date.now()}@pgj.internal`;
-      const demoPass = 'pgj_guest_pass_2026';
-      const res = await createUserWithEmailAndPassword(auth, demoEmail, demoPass);
-      if (res.user) {
-        await fetchOrCreateProfile(res.user, 'Guest Writer');
-      }
+      console.warn('Anonymous auth failed:', err);
     }
+
+    // 2. Secondary: Try Firebase Email Guest account creation
+    try {
+      const randomId = Math.random().toString(36).substring(2, 9);
+      const demoEmail = `guest_${Date.now()}_${randomId}@gmail.com`;
+      const demoPass = 'pgj_guest_pass_2026!';
+      const res = await createUserWithEmailAndPassword(auth, demoEmail, demoPass);
+      if (res?.user) {
+        await fetchOrCreateProfile(res.user, 'Guest Sanctuary Writer');
+        return;
+      }
+    } catch (err) {
+      console.warn('Synthetic email guest creation failed:', err);
+    }
+
+    // 3. Ultimate Fallback: Direct Local Sanctuary Session so guest access ALWAYS succeeds instantly
+    const syntheticUid = `guest_local_${Date.now()}`;
+    const fallbackProfile: UserSanctuaryProfile = {
+      uid: syntheticUid,
+      email: 'guest@pgj.sanctuary',
+      displayName: 'Guest Sanctuary Writer',
+      firstName: 'Guest',
+      lastName: 'Writer',
+      moniker: 'Guest',
+      avatarUrl: DEFAULT_AVATAR,
+      persona: 'sage',
+      auraTone: 'Dawn Lavender',
+      philosophy: 'Exploring stillness and mindful reflection.',
+      pronouns: 'They / Them',
+      cadence: 'Daily',
+      depth: 'Balanced',
+      audioChime: true,
+      proactivePrompts: true,
+      voiceSynthesis: true,
+      pillars: ['Creative Clarity', 'Mindful Presence'],
+      reflectionsCount: 0,
+      dayStreak: 1,
+      stillnessHours: 1
+    };
+    setProfile(fallbackProfile);
+    setHasCompletedOnboarding(true);
+    setLoading(false);
   };
 
   const signInWithEmail = async (email: string, pass: string) => {

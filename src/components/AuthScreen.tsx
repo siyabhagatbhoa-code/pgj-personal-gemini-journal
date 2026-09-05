@@ -110,10 +110,10 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ initialIsSignUp = false,
     try {
       await signInWithGoogle();
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Google sign-in failed.';
-      if (msg.includes('unauthorized-domain')) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('origin_mismatch') || msg.includes('400') || msg.includes('unauthorized-domain')) {
         setError(
-          'Google Sign-In domain error: "pgj-personal-gemini-journal.onrender.com" is not authorized in Firebase Console. Please add this domain under Firebase Console -> Authentication -> Settings -> Authorized domains.'
+          'Google Sign-In is restricted for custom domains on this OAuth Client. Please click "Try Instant Guest Sanctuary (1-Click Access)" below or use Email login to enter immediately!'
         );
       } else if (msg.includes('popup-closed-by-user')) {
         setError('Google sign-in window was closed before completing. Please try again.');
