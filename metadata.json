@@ -1,0 +1,6 @@
+{
+  "name": "PGJ - Personal Gemini Journal",
+  "description": "Personal Gemini Journal — a private AI-powered journaling sanctuary with multi-turn reflective companion and encrypted data isolation.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

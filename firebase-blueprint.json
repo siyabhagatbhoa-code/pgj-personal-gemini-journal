@@ -1,0 +1,60 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile and sanctuary journaling preferences",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "firstName": { "type": "string" },
+        "lastName": { "type": "string" },
+        "moniker": { "type": "string" },
+        "avatarUrl": { "type": "string" },
+        "persona": { "type": "string" },
+        "auraTone": { "type": "string" },
+        "philosophy": { "type": "string" },
+        "pronouns": { "type": "string" },
+        "cadence": { "type": "string" },
+        "depth": { "type": "string" },
+        "audioChime": { "type": "boolean" },
+        "proactivePrompts": { "type": "boolean" },
+        "voiceSynthesis": { "type": "boolean" },
+        "pillars": { "type": "array" },
+        "reflectionsCount": { "type": "number" },
+        "dayStreak": { "type": "number" },
+        "stillnessHours": { "type": "number" },
+        "hasCompletedOnboarding": { "type": "boolean" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["uid", "email"]
+    },
+    "JournalEntry": {
+      "title": "JournalEntry",
+      "description": "A single reflective journaling conversation",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "moodTag": { "type": "string" },
+        "persona": { "type": "string" },
+        "messages": { "type": "array" },
+        "timestamp": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["userId", "title"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Private user identity, mindful streak stats, and attunement settings"
+    },
+    "/users/{userId}/entries/{entryId}": {
+      "schema": "JournalEntry",
+      "description": "Private user reflection transcripts and AI companionships"
+    }
+  }
+}
