@@ -110,8 +110,18 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ initialIsSignUp = false,
     try {
       await signInWithGoogle();
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Google sign-in was canceled.';
-      setError(msg.replace('Firebase: ', ''));
+      const msg = err instanceof Error ? err.message : 'Google sign-in failed.';
+      if (msg.includes('unauthorized-domain')) {
+        setError(
+          'Google Sign-In domain error: "pgj-personal-gemini-journal.onrender.com" is not authorized in Firebase Console. Please add this domain under Firebase Console -> Authentication -> Settings -> Authorized domains.'
+        );
+      } else if (msg.includes('popup-closed-by-user')) {
+        setError('Google sign-in window was closed before completing. Please try again.');
+      } else if (msg.includes('popup-blocked')) {
+        setError('Google sign-in popup was blocked by your browser. Please allow popups for this site.');
+      } else {
+        setError(msg.replace('Firebase: ', ''));
+      }
     } finally {
       setLoading(false);
     }
