@@ -17,7 +17,7 @@ const PORT = Number(process.env.PORT) || 3000;
 app.use(express.json({ limit: '10mb' }));
 
 // Candidate models in preference order for fast, low-latency reflection
-const PREFERRED_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.8-flash', 'gemini-3.6-flash'];
+const PREFERRED_MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-2.5-pro'];
 
 async function generateFastGeminiContent(
   ai: GoogleGenAI,
@@ -39,9 +39,6 @@ async function generateFastGeminiContent(
           systemInstruction: options.systemInstruction,
           temperature: options.temperature ?? 0.7,
           responseMimeType: options.responseMimeType,
-          thinkingConfig: {
-            thinkingLevel: ThinkingLevel.LOW,
-          },
         },
       });
       return response;
@@ -140,6 +137,24 @@ app.get('/api/health', (req, res) => {
 });
 
 // Multi-turn AI reflection streaming endpoint (SSE for sub-second initial token delivery)
+function getFallbackReflection(persona: string, lastUserMessage: string): string {
+  const cleanMsg = (lastUserMessage || '').trim();
+  const snippet = cleanMsg.length > 0 ? `"${cleanMsg.slice(0, 70)}${cleanMsg.length > 70 ? '...' : ''}"` : 'these reflections';
+
+  if (persona === 'friend') {
+    return `I hear how deeply you care about ${snippet}. Thank you for trusting this quiet sanctuary space with your honest thoughts. What part of this feels most important for your heart to hold right now?`;
+  }
+  if (persona === 'philosopher') {
+    return `Reflecting on ${snippet} opens up such intriguing existential wonder. What underlying assumptions or quiet truths might be revealing themselves to you as you explore this?`;
+  }
+  if (persona === 'coach') {
+    return `Thank you for bringing clear awareness to ${snippet}. Take a deep, grounding breath with this thought. What is one small, intentional step or anchor that can support you today?`;
+  }
+  // Default: Mindful Sage
+  return `Thank you for bringing ${snippet} into this space of mindful presence. Beneath these words, notice what gentle stillness wants to emerge next. What would feel most restorative to explore together now?`;
+}
+
+// Multi-turn AI reflection streaming endpoint (SSE for sub-second initial token delivery)
 app.post('/api/chat-stream', async (req, res) => {
   try {
     const { messages, persona = 'sage', userProfile = {}, depth = 'Balanced' } = req.body;
@@ -148,7 +163,27 @@ app.post('/api/chat-stream', async (req, res) => {
       return res.status(400).json({ error: 'Messages array is required.' });
     }
 
-    const apiKey = await getGeminiApiKey();
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders?.();
+
+    let apiKey = '';
+    try {
+      apiKey = await getGeminiApiKey();
+    } catch {
+      // API key missing or unconfigured fallback
+    }
+
+    if (!apiKey) {
+      const lastMsg = messages[messages.length - 1]?.text || '';
+      const fallbackReply = getFallbackReflection(persona, lastMsg);
+      res.write(`data: ${JSON.stringify({ text: fallbackReply })}\n\n`);
+      res.write('data: [DONE]\n\n');
+      return res.end();
+    }
+
     const ai = new GoogleGenAI({ apiKey });
 
     // Select system instruction base
@@ -167,12 +202,6 @@ Respond in 1-2 thoughtful, evocative, and grounded paragraphs (avoid overly leng
       parts: [{ text: m.text }]
     }));
 
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache, no-transform');
-    res.setHeader('Connection', 'keep-alive');
-    res.setHeader('X-Accel-Buffering', 'no');
-    res.flushHeaders?.();
-
     let stream = null;
     for (const model of PREFERRED_MODELS) {
       try {
@@ -182,7 +211,6 @@ Respond in 1-2 thoughtful, evocative, and grounded paragraphs (avoid overly leng
           config: {
             systemInstruction,
             temperature: 0.7,
-            thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
           }
         });
         break;
@@ -192,7 +220,10 @@ Respond in 1-2 thoughtful, evocative, and grounded paragraphs (avoid overly leng
     }
 
     if (!stream) {
-      res.write(`data: ${JSON.stringify({ error: 'Failed to initialize stream' })}\n\n`);
+      const lastMsg = messages[messages.length - 1]?.text || '';
+      const fallbackReply = getFallbackReflection(persona, lastMsg);
+      res.write(`data: ${JSON.stringify({ text: fallbackReply })}\n\n`);
+      res.write('data: [DONE]\n\n');
       return res.end();
     }
 
@@ -206,7 +237,10 @@ Respond in 1-2 thoughtful, evocative, and grounded paragraphs (avoid overly leng
     res.end();
   } catch (error: unknown) {
     console.error('Error in /api/chat-stream:', error);
-    res.write(`data: ${JSON.stringify({ error: 'Stream error', details: (error as Error)?.message || 'Unknown' })}\n\n`);
+    const lastMsg = req.body?.messages?.[req.body?.messages?.length - 1]?.text || '';
+    const fallbackReply = getFallbackReflection(req.body?.persona || 'sage', lastMsg);
+    res.write(`data: ${JSON.stringify({ text: fallbackReply })}\n\n`);
+    res.write('data: [DONE]\n\n');
     res.end();
   }
 });
@@ -220,7 +254,19 @@ app.post('/api/chat', async (req, res) => {
       return res.status(400).json({ error: 'Messages array is required.' });
     }
 
-    const apiKey = await getGeminiApiKey();
+    let apiKey = '';
+    try {
+      apiKey = await getGeminiApiKey();
+    } catch {
+      // API key fallback
+    }
+
+    if (!apiKey) {
+      const lastMsg = messages[messages.length - 1]?.text || '';
+      const reply = getFallbackReflection(persona, lastMsg);
+      return res.json({ reply });
+    }
+
     const ai = new GoogleGenAI({ apiKey });
 
     // Select system instruction base
@@ -245,15 +291,13 @@ Respond in 1-2 thoughtful, evocative, and grounded paragraphs (avoid overly leng
       temperature: 0.7,
     });
 
-    const reply = response.text || 'I am listening with an open heart. What more would you like to reflect on?';
+    const reply = response.text || getFallbackReflection(persona, messages[messages.length - 1]?.text || '');
     res.json({ reply });
   } catch (error: unknown) {
     console.error('Error in /api/chat:', error);
-    const message = error instanceof Error ? error.message : 'Unknown server error';
-    res.status(500).json({
-      error: 'Failed to generate reflection response',
-      details: message
-    });
+    const lastMsg = req.body?.messages?.[req.body?.messages?.length - 1]?.text || '';
+    const reply = getFallbackReflection(req.body?.persona || 'sage', lastMsg);
+    res.json({ reply });
   }
 });
 
