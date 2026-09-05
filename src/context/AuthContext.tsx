@@ -132,18 +132,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.warn('Google Auth redirect result warning:', err);
       });
 
-    // Check for active instant guest session
-    const savedGuest = localStorage.getItem('pgj_guest_session');
-
     // Real Firebase Auth state listener
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
+      const activeGuest = localStorage.getItem('pgj_guest_session');
       if (fbUser) {
         localStorage.removeItem('pgj_guest_session');
         setUser(fbUser);
         await fetchOrCreateProfile(fbUser);
-      } else if (savedGuest) {
+      } else if (activeGuest) {
         try {
-          const parsed = JSON.parse(savedGuest);
+          const parsed = JSON.parse(activeGuest);
           const syntheticUser = {
             uid: parsed.uid,
             email: parsed.email,
@@ -262,21 +260,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       getIdToken: async () => 'guest_token',
     } as unknown as FirebaseUser;
 
-    // INSTANT: Set user, profile and localStorage immediately (0ms waiting!)
+    // INSTANT: Set user, profile and localStorage immediately (0ms waiting, zero network calls!)
     localStorage.setItem('pgj_guest_session', JSON.stringify(guestProfile));
     setUser(syntheticUser);
     setProfile(guestProfile);
     setHasCompletedOnboarding(true);
     setLoading(false);
-
-    // Non-blocking background sync with Firebase if available
-    signInAnonymously(auth)
-      .then((res) => {
-        if (res?.user) {
-          fetchOrCreateProfile(res.user, 'Guest Sanctuary Writer').catch(() => {});
-        }
-      })
-      .catch(() => {});
   };
 
   const signInWithEmail = async (email: string, pass: string) => {
