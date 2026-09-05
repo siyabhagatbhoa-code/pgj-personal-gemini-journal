@@ -144,6 +144,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } else if (savedGuest) {
         try {
           const parsed = JSON.parse(savedGuest);
+          const syntheticUser = {
+            uid: parsed.uid,
+            email: parsed.email,
+            displayName: parsed.displayName,
+            photoURL: parsed.avatarUrl,
+            emailVerified: true,
+            isAnonymous: true,
+            getIdToken: async () => 'guest_token',
+          } as unknown as FirebaseUser;
+          setUser(syntheticUser);
           setProfile(parsed);
           setHasCompletedOnboarding(true);
         } catch {
@@ -242,8 +252,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       stillnessHours: 1
     };
 
-    // INSTANT: Set state and localStorage immediately (0ms waiting!)
+    const syntheticUser = {
+      uid: syntheticUid,
+      email: guestProfile.email,
+      displayName: guestProfile.displayName,
+      photoURL: guestProfile.avatarUrl,
+      emailVerified: true,
+      isAnonymous: true,
+      getIdToken: async () => 'guest_token',
+    } as unknown as FirebaseUser;
+
+    // INSTANT: Set user, profile and localStorage immediately (0ms waiting!)
     localStorage.setItem('pgj_guest_session', JSON.stringify(guestProfile));
+    setUser(syntheticUser);
     setProfile(guestProfile);
     setHasCompletedOnboarding(true);
     setLoading(false);
