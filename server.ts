@@ -8,8 +8,8 @@ import { createServer as createViteServer } from 'vite';
 
 dotenv.config();
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const currentFilename = typeof import.meta?.url === 'string' ? fileURLToPath(import.meta.url) : '';
+const currentDirname = currentFilename ? path.dirname(currentFilename) : (typeof __dirname !== 'undefined' ? __dirname : process.cwd());
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
