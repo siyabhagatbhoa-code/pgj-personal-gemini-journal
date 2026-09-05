@@ -5,11 +5,15 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signInWithPopup,
+  signInWithCredential,
+  signInAnonymously,
+  GoogleAuthProvider,
   signOut,
   updateProfile as updateFirebaseProfile
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { auth, db, googleProvider } from '../lib/firebase';
+import firebaseConfig from '../../firebase-applet-config.json';
 import { UserSanctuaryProfile } from '../types';
 
 export const DEFAULT_AVATAR =
@@ -20,6 +24,7 @@ interface AuthContextValue {
   profile: UserSanctuaryProfile | null;
   loading: boolean;
   signInWithGoogle: () => Promise<void>;
+  signInAsGuest: () => Promise<void>;
   signInWithEmail: (e: string, p: string) => Promise<void>;
   signUpWithEmail: (e: string, p: string, name: string) => Promise<void>;
   signOutUser: () => Promise<void>;
@@ -133,9 +138,68 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signInWithGoogle = async () => {
     localStorage.removeItem('pgj_local_auth');
+
+    // 1. Try Google Identity Services (GIS) ID Token authentication first if script loaded
+    if (typeof window !== 'undefined' && (window as any).google?.accounts?.id && firebaseConfig.oAuthClientId) {
+      try {
+        const idToken = await new Promise<string>((resolve, reject) => {
+          try {
+            (window as any).google.accounts.id.initialize({
+              client_id: firebaseConfig.oAuthClientId,
+              callback: (response: { credential?: string; error?: string }) => {
+                if (response.credential) {
+                  resolve(response.credential);
+                } else {
+                  reject(new Error(response.error || 'Google credential not received'));
+                }
+              },
+            });
+            (window as any).google.accounts.id.prompt((notification: any) => {
+              if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+                reject(new Error('GIS_POPUP_SKIPPED'));
+              }
+            });
+          } catch (e) {
+            reject(e);
+          }
+        });
+
+        if (idToken) {
+          const credential = GoogleAuthProvider.credential(idToken);
+          const res = await signInWithCredential(auth, credential);
+          if (res.user) {
+            await fetchOrCreateProfile(res.user);
+          }
+          return;
+        }
+      } catch (err) {
+        console.warn('GIS Token Auth fell back to popup:', err);
+      }
+    }
+
+    // 2. Standard Firebase Popup fallback
     const res = await signInWithPopup(auth, googleProvider);
     if (res.user) {
       await fetchOrCreateProfile(res.user);
+    }
+  };
+
+  const signInAsGuest = async () => {
+    localStorage.removeItem('pgj_local_auth');
+    try {
+      const res = await signInAnonymously(auth);
+      if (res.user) {
+        await fetchOrCreateProfile(res.user, 'Guest Sanctuary Writer');
+      }
+    } catch (err) {
+      console.warn('Anonymous auth fallback:', err);
+      // Fallback guest user if anonymous auth is not enabled in Firebase
+      const demoEmail = `guest_${Date.now()}@pgj.internal`;
+      const demoPass = 'pgj_guest_pass_2026';
+      const res = await createUserWithEmailAndPassword(auth, demoEmail, demoPass);
+      if (res.user) {
+        await fetchOrCreateProfile(res.user, 'Guest Writer');
+      }
     }
   };
 
@@ -224,6 +288,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         profile,
         loading,
         signInWithGoogle,
+        signInAsGuest,
         signInWithEmail,
         signUpWithEmail,
         signOutUser,

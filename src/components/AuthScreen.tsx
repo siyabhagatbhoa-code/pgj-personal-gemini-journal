@@ -8,7 +8,7 @@ interface AuthScreenProps {
 }
 
 export const AuthScreen: React.FC<AuthScreenProps> = ({ initialIsSignUp = false, onBackToHome }) => {
-  const { signInWithGoogle, signInWithEmail, signUpWithEmail } = useAuth();
+  const { signInWithGoogle, signInAsGuest, signInWithEmail, signUpWithEmail } = useAuth();
 
   const [isSignUp, setIsSignUp] = useState(initialIsSignUp);
 
@@ -122,6 +122,19 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ initialIsSignUp = false,
       } else {
         setError(msg.replace('Firebase: ', ''));
       }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGuestSignIn = async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      await signInAsGuest();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Guest access failed.';
+      setError(msg.replace('Firebase: ', ''));
     } finally {
       setLoading(false);
     }
@@ -390,6 +403,17 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ initialIsSignUp = false,
             />
           </svg>
           <span>Continue with Google</span>
+        </button>
+
+        {/* Quick Instant Guest Access Button */}
+        <button
+          onClick={handleGuestSignIn}
+          disabled={loading}
+          type="button"
+          className="w-full mt-2.5 py-2.5 px-5 rounded-full bg-purple-50/80 hover:bg-purple-100/80 text-purple-700 text-sm font-semibold border border-purple-200/70 shadow-sm transition-all flex items-center justify-center gap-2 active:scale-[0.99]"
+        >
+          <span className="material-symbols-outlined text-[18px]">bolt</span>
+          <span>Try Instant Guest Sanctuary (1-Click Access)</span>
         </button>
 
         {/* Toggle Mode */}
