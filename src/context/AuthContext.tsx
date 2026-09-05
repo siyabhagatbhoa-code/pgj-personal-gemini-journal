@@ -119,13 +119,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
-    // Purge any legacy synthetic auth data
-    localStorage.removeItem('pgj_local_auth');
-
     // Process OAuth redirect result when user returns from Google auth redirect
     getRedirectResult(auth)
       .then(async (res) => {
         if (res?.user) {
+          localStorage.removeItem('pgj_guest_session');
           setUser(res.user);
           await fetchOrCreateProfile(res.user);
         }
@@ -134,11 +132,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.warn('Google Auth redirect result warning:', err);
       });
 
-    // Real Firebase Auth state listener - ONLY source of authentication truth
+    // Check for active instant guest session
+    const savedGuest = localStorage.getItem('pgj_guest_session');
+
+    // Real Firebase Auth state listener
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       if (fbUser) {
+        localStorage.removeItem('pgj_guest_session');
         setUser(fbUser);
         await fetchOrCreateProfile(fbUser);
+      } else if (savedGuest) {
+        try {
+          const parsed = JSON.parse(savedGuest);
+          setProfile(parsed);
+          setHasCompletedOnboarding(true);
+        } catch {
+          setUser(null);
+          setProfile(null);
+          setHasCompletedOnboarding(false);
+        }
       } else {
         setUser(null);
         setProfile(null);
@@ -206,36 +218,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signInAsGuest = async () => {
-    localStorage.removeItem('pgj_local_auth');
-    
-    // 1. Primary: Try Firebase Anonymous Auth
-    try {
-      const res = await signInAnonymously(auth);
-      if (res?.user) {
-        await fetchOrCreateProfile(res.user, 'Guest Sanctuary Writer');
-        return;
-      }
-    } catch (err) {
-      console.warn('Anonymous auth failed:', err);
-    }
-
-    // 2. Secondary: Try Firebase Email Guest account creation
-    try {
-      const randomId = Math.random().toString(36).substring(2, 9);
-      const demoEmail = `guest_${Date.now()}_${randomId}@gmail.com`;
-      const demoPass = 'pgj_guest_pass_2026!';
-      const res = await createUserWithEmailAndPassword(auth, demoEmail, demoPass);
-      if (res?.user) {
-        await fetchOrCreateProfile(res.user, 'Guest Sanctuary Writer');
-        return;
-      }
-    } catch (err) {
-      console.warn('Synthetic email guest creation failed:', err);
-    }
-
-    // 3. Ultimate Fallback: Direct Local Sanctuary Session so guest access ALWAYS succeeds instantly
-    const syntheticUid = `guest_local_${Date.now()}`;
-    const fallbackProfile: UserSanctuaryProfile = {
+    const syntheticUid = `guest_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const guestProfile: UserSanctuaryProfile = {
       uid: syntheticUid,
       email: 'guest@pgj.sanctuary',
       displayName: 'Guest Sanctuary Writer',
@@ -257,9 +241,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       dayStreak: 1,
       stillnessHours: 1
     };
-    setProfile(fallbackProfile);
+
+    // INSTANT: Set state and localStorage immediately (0ms waiting!)
+    localStorage.setItem('pgj_guest_session', JSON.stringify(guestProfile));
+    setProfile(guestProfile);
     setHasCompletedOnboarding(true);
     setLoading(false);
+
+    // Non-blocking background sync with Firebase if available
+    signInAnonymously(auth)
+      .then((res) => {
+        if (res?.user) {
+          fetchOrCreateProfile(res.user, 'Guest Sanctuary Writer').catch(() => {});
+        }
+      })
+      .catch(() => {});
   };
 
   const signInWithEmail = async (email: string, pass: string) => {
@@ -286,7 +282,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signOutUser = async () => {
-    localStorage.removeItem('pgj_local_auth');
+    localStorage.removeItem('pgj_guest_session');
     try {
       await signOut(auth);
     } catch (err) {
