@@ -5,6 +5,8 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   signInWithCredential,
   signInAnonymously,
   GoogleAuthProvider,
@@ -120,6 +122,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Purge any legacy synthetic auth data
     localStorage.removeItem('pgj_local_auth');
 
+    // Process OAuth redirect result when user returns from Google auth redirect
+    getRedirectResult(auth)
+      .then(async (res) => {
+        if (res?.user) {
+          setUser(res.user);
+          await fetchOrCreateProfile(res.user);
+        }
+      })
+      .catch((err) => {
+        console.warn('Google Auth redirect result warning:', err);
+      });
+
     // Real Firebase Auth state listener - ONLY source of authentication truth
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       if (fbUser) {
@@ -139,48 +153,55 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signInWithGoogle = async () => {
     localStorage.removeItem('pgj_local_auth');
 
-    // 1. Try Google Identity Services (GIS) ID Token authentication first if script loaded
-    if (typeof window !== 'undefined' && (window as any).google?.accounts?.id && firebaseConfig.oAuthClientId) {
-      try {
-        const idToken = await new Promise<string>((resolve, reject) => {
-          try {
-            (window as any).google.accounts.id.initialize({
-              client_id: firebaseConfig.oAuthClientId,
-              callback: (response: { credential?: string; error?: string }) => {
-                if (response.credential) {
-                  resolve(response.credential);
-                } else {
-                  reject(new Error(response.error || 'Google credential not received'));
-                }
-              },
-            });
-            (window as any).google.accounts.id.prompt((notification: any) => {
-              if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-                reject(new Error('GIS_POPUP_SKIPPED'));
-              }
-            });
-          } catch (e) {
-            reject(e);
-          }
-        });
-
-        if (idToken) {
-          const credential = GoogleAuthProvider.credential(idToken);
-          const res = await signInWithCredential(auth, credential);
-          if (res.user) {
-            await fetchOrCreateProfile(res.user);
-          }
-          return;
-        }
-      } catch (err) {
-        console.warn('GIS Token Auth fell back to popup:', err);
-      }
+    // 1. Primary: Use signInWithRedirect which routes through Firebase's pre-authorized authDomain
+    // (skillful-technique-fpnh2.firebaseapp.com), allowing Google Auth to work on Render without custom domain setup!
+    try {
+      await signInWithRedirect(auth, googleProvider);
+      return;
+    } catch (err: any) {
+      console.warn('signInWithRedirect attempt fallback to popup:', err?.message || err);
     }
 
-    // 2. Standard Firebase Popup fallback
-    const res = await signInWithPopup(auth, googleProvider);
-    if (res.user) {
-      await fetchOrCreateProfile(res.user);
+    // 2. Secondary fallback: Popup
+    try {
+      const res = await signInWithPopup(auth, googleProvider);
+      if (res.user) {
+        await fetchOrCreateProfile(res.user);
+      }
+    } catch (popupErr: any) {
+      // 3. Tertiary fallback: Google Identity Services ID token
+      if (typeof window !== 'undefined' && (window as any).google?.accounts?.id && firebaseConfig.oAuthClientId) {
+        try {
+          const idToken = await new Promise<string>((resolve, reject) => {
+            try {
+              (window as any).google.accounts.id.initialize({
+                client_id: firebaseConfig.oAuthClientId,
+                callback: (response: { credential?: string; error?: string }) => {
+                  if (response.credential) resolve(response.credential);
+                  else reject(new Error(response.error || 'Google credential not received'));
+                },
+              });
+              (window as any).google.accounts.id.prompt((n: any) => {
+                if (n.isNotDisplayed() || n.isSkippedMoment()) reject(new Error('GIS skipped'));
+              });
+            } catch (e) {
+              reject(e);
+            }
+          });
+
+          if (idToken) {
+            const credential = GoogleAuthProvider.credential(idToken);
+            const res = await signInWithCredential(auth, credential);
+            if (res.user) {
+              await fetchOrCreateProfile(res.user);
+            }
+            return;
+          }
+        } catch (gisErr) {
+          console.warn('GIS Token Auth fell back:', gisErr);
+        }
+      }
+      throw popupErr;
     }
   };
 
